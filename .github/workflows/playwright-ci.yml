@@ -1,0 +1,80 @@
+name: Playwright CI & Reports Build
+
+permissions:
+  contents: write
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 6 * * *'
+
+jobs:
+  report-build:
+    name: Run Playwright Tests & Generate Reports
+    runs-on: ubuntu-latest
+    env:
+      CI: true
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Cache node modules
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.npm
+            node_modules
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Playwright browsers
+        run: npx playwright install --with-deps
+
+      - name: Capture storage state
+        run: npm run capture:state
+
+      - name: Run Playwright tests
+        env:
+          STORAGE_STATE: state.json
+        run: npm run ci
+
+      - name: Preserve Allure history
+        run: |
+          mkdir -p allure-results/history
+          cp -r allure-reports/latest/history/* allure-results/history/ || true
+
+      - name: Write Allure environment
+        run: node scripts/writeAllureEnvironment.js
+
+      - name: Inject build metadata into Allure
+        run: |
+          echo "Build Time=$(date -u)" >> allure-results/environment.properties
+          echo "GitHub Run ID=$GITHUB_RUN_ID" >> allure-results/environment.properties
+
+      - name: Generate Allure report
+        run: npx allure generate allure-results -o allure-report --clean
+
+      - name: Upload Playwright HTML report
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-html-report
+          path: playwright-report
+          if-no-files-found: warn
+
+      - name: Upload Allure report
+        uses: actions/upload-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+          if-no-files-found: warn

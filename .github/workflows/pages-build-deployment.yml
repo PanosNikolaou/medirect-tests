@@ -1,0 +1,97 @@
+name: Pages Build & Deployment
+
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
+on:
+  workflow_run:
+    workflows: ["Playwright CI & Reports Build"]
+    types:
+      - completed
+
+jobs:
+  deploy-pages:
+    name: Deploy Reports to GH Pages
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Checkout existing gh-pages branch
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GH_PAGES_TOKEN }}
+          path: gh-pages
+
+      - name: Download Allure report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+
+      - name: Download Playwright report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-html-report
+          path: playwright-report
+
+      - name: Assemble site directory
+        run: |
+          set -e
+          REF_NAME=${GITHUB_REF_NAME##*/}
+          SITE_DIR=site
+          mkdir -p $SITE_DIR/allure-reports/$REF_NAME
+          mkdir -p $SITE_DIR/playwright-reports/$REF_NAME
+
+          cp -r allure-report/* $SITE_DIR/allure-reports/$REF_NAME/ || true
+          cp -r playwright-report/* $SITE_DIR/playwright-reports/$REF_NAME/ || true
+
+          # Preserve Allure history
+          if [[ -d gh-pages/allure-reports/latest/history ]]; then
+            mkdir -p $SITE_DIR/allure-reports/$REF_NAME/history
+            cp -r gh-pages/allure-reports/latest/history/* $SITE_DIR/allure-reports/$REF_NAME/history/ || true
+          fi
+
+          # Update 'latest' for master
+          if [[ "$REF_NAME" == "master" ]]; then
+            rm -rf $SITE_DIR/allure-reports/latest || true
+            rm -rf $SITE_DIR/playwright-reports/latest || true
+            cp -r $SITE_DIR/allure-reports/master $SITE_DIR/allure-reports/latest || true
+            cp -r $SITE_DIR/playwright-reports/master $SITE_DIR/playwright-reports/latest || true
+          fi
+
+      - name: Generate index.html
+        run: |
+          chmod +x scripts/generate-index-html.sh
+          cd site
+          ../scripts/generate-index-html.sh
+
+      - name: Publish site to gh-pages
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GH_PAGES_TOKEN }}
+          publish_dir: site
+          publish_branch: gh-pages
+          keep_files: true
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
+
+      - name: Comment on PR with workflow run link and reports
+        if: ${{ github.event.workflow_run.head_branch }}
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          issue-number: ${{ github.event.workflow_run.pull_requests[0].number || '' }}
+          body: |
+            ✅ Playwright test run completed
+
+            🔗 CI Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.event.workflow_run.id }}
+
+            🌐 Allure report: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/${{ github.event.workflow_run.head_branch }}
+            🌟 Allure (latest): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/latest
+
+            🌐 Playwright report: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/${{ github.event.workflow_run.head_branch }}
+            🌟 Playwright (latest): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/latest
