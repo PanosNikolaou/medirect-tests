@@ -102,6 +102,12 @@ jobs:
           cp -r allure-report/* gh-pages/allure-reports/${GITHUB_REF_NAME}/ || true
           cp -r playwright-report/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/ || true
 
+          # Copy screenshots & traces
+          mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}/screenshots
+          mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}/traces
+          cp -r test-results/screenshots/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/screenshots/ 2>/dev/null || true
+          cp -r test-results/traces/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/traces/ 2>/dev/null || true
+
           if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
             rm -rf gh-pages/allure-reports/latest
             rm -rf gh-pages/playwright-reports/latest
@@ -116,7 +122,7 @@ jobs:
             cp -r gh-pages/allure-reports/latest/history/* gh-pages/allure-reports/${GITHUB_REF_NAME}/history/ || true
           fi
 
-      - name: Generate index.html with badges
+      - name: Generate index.html with badges, screenshots & traces
         run: |
           cd gh-pages
           cat << 'EOF' > index.html
@@ -138,6 +144,7 @@ jobs:
               .badge { display: inline-block; padding: 2px 6px; font-size: 0.8em; border-radius: 4px; color: #fff; margin-left: 5px; }
               .badge-main { background-color: #27ae60; }
               .badge-latest { background-color: #e67e22; }
+              img.screenshot { height:50px; border:1px solid #ddd; }
             </style>
           </head>
           <body>
@@ -149,11 +156,13 @@ jobs:
                   <th>Allure Report</th>
                   <th>Playwright HTML Report</th>
                   <th>Last Updated</th>
+                  <th>Screenshots</th>
+                  <th>Traces</th>
                 </tr>
               </thead>
               <tbody>
           EOF
-
+      
           branches=$(ls -1 allure-reports playwright-reports 2>/dev/null | sort -u)
           declare -A branch_times
           for branch in $branches; do
@@ -162,27 +171,40 @@ jobs:
             latest_time=$(( allure_time > playwright_time ? allure_time : playwright_time ))
             branch_times[$branch]=$latest_time
           done
-
+      
           main_branch="main"
           latest_branch=$(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | head -n 1 | awk '{print $1}')
-
+      
           for branch in $(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | awk '{print $1}'); do
             row_class=""
             badges=""
             [[ "$branch" == "$main_branch" ]] && row_class="main-branch" && badges="$badges <span class='badge badge-main'>MAIN</span>"
             [[ "$branch" == "$latest_branch" ]] && badges="$badges <span class='badge badge-latest'>LATEST</span>"
             last_updated=$(date -d @"${branch_times[$branch]}" '+%Y-%m-%d %H:%M:%S')
+      
             allure_link="allure-reports/$branch"
             playwright_link="playwright-reports/$branch"
             [[ ! -d "$allure_link" ]] && allure_link="#"
             [[ ! -d "$playwright_link" ]] && playwright_link="#"
+      
+            # Screenshot and trace preview
+            screenshot_file=$(ls -1 playwright-reports/$branch/screenshots 2>/dev/null | head -n1)
+            trace_file=$(ls -1 playwright-reports/$branch/traces 2>/dev/null | head -n1)
+            screenshot_html=""
+            trace_html=""
+            [[ -n "$screenshot_file" ]] && screenshot_html="<a href='playwright-reports/$branch/screenshots/$screenshot_file' target='_blank'><img src='playwright-reports/$branch/screenshots/$screenshot_file' class='screenshot'></a>"
+            [[ -n "$trace_file" ]] && trace_html="<a href='playwright-reports/$branch/traces/$trace_file' target='_blank'>Trace</a>"
+      
             echo "<tr class='$row_class'>
                     <td>$branch $badges</td>
                     <td><a href='$allure_link' target='_blank'>Allure</a></td>
                     <td><a href='$playwright_link' target='_blank'>Playwright</a></td>
                     <td>$last_updated</td>
+                    <td>$screenshot_html</td>
+                    <td>$trace_html</td>
                   </tr>" >> index.html
           done
+      
           echo "</tbody></table></body></html>" >> index.html
 
       - name: Commit and push to gh-pages
