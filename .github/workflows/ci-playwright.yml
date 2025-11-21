@@ -7,7 +7,7 @@ on:
     branches: [ main, master ]
   workflow_dispatch: {}
   schedule:
-    - cron: '0 6 * * *'
+    - cron: '0 6 * * *' # daily at 06:00 UTC
 
 jobs:
   test:
@@ -114,11 +114,12 @@ jobs:
           git clone --branch gh-pages https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
           cd gh-pages
 
-          echo "<!DOCTYPE html>
-          <html lang='en'>
+          cat << 'EOF' > index.html
+          <!DOCTYPE html>
+          <html lang="en">
           <head>
-            <meta charset='UTF-8'>
-            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
             <title>Playwright & Allure Reports</title>
             <style>
               body { font-family: Arial, sans-serif; padding: 2rem; background: #f7f7f7; }
@@ -145,10 +146,11 @@ jobs:
                   <th>Last Updated</th>
                 </tr>
               </thead>
-              <tbody>" > index.html
+              <tbody>
+          EOF
 
-          # Get all unique branch names from both report folders
-          branches=$(ls -1 allure-reports playwright-reports | sort -u)
+          # Get all unique branches
+          branches=$(ls -1 allure-reports playwright-reports 2>/dev/null | sort -u)
 
           declare -A branch_times
           for branch in $branches; do
