@@ -1,0 +1,1 @@
+❌ Equity test failed for "NONEXISTENT123". Screenshot saved at: /home/panagiotis/PycharmProjects/medirect-tests/test-results/screenshots/NONEXISTENT123_1763708221137.png
