@@ -1,0 +1,1 @@
+❌ Equity test failed for "NONEXISTENT123". Screenshot saved at: /home/runner/work/medirect-tests/medirect-tests/test-results/screenshots/NONEXISTENT123_1763711049434.png

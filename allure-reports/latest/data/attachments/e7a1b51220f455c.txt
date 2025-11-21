@@ -1,7 +1,0 @@
-DEBUG isNoResults (dom): {
-  itemsCount: 0,
-  visibleDataRows: 0,
-  rowMatches: 0,
-  totalResults: 0,
-  lastSearchTerm: 'NONEXISTENT123'
-}
