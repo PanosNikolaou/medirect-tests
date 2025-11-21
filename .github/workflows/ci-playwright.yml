@@ -46,13 +46,13 @@ jobs:
       - name: Capture storage state
         run: npm run capture:state
 
-      - name: Prepare Allure environment and history
+      - name: Write Allure environment
+        run: node scripts/writeAllureEnvironment.js
+
+      - name: Preserve Allure history
         run: |
           mkdir -p allure-results/history
-          if [ -d allure-reports/latest/history ]; then
-            cp -r allure-reports/latest/history/* allure-results/history/ || true
-          fi
-          node scripts/writeAllureEnvironment.js
+          cp -r allure-reports/latest/history/* allure-results/history/ || true
 
       - name: Run Playwright tests
         env:
