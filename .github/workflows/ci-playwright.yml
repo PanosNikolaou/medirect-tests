@@ -45,27 +45,22 @@ jobs:
       - name: Capture storage state
         run: npm run capture:state
 
-      # --- Run Playwright tests first ---
       - name: Run Playwright tests
         env:
           STORAGE_STATE: state.json
         run: npm run ci
 
-      # --- Preserve Allure history before generating report ---
       - name: Preserve Allure history
         run: |
           mkdir -p allure-results/history
           cp -r allure-reports/latest/history/* allure-results/history/ || true
 
-      # --- Write environment for Allure ---
       - name: Write Allure environment
         run: node scripts/writeAllureEnvironment.js
 
-      # --- Generate Allure report ---
       - name: Generate Allure report
         run: npx allure generate allure-results -o allure-report --clean
 
-      # --- Upload reports as artifacts ---
       - name: Upload Playwright HTML report
         uses: actions/upload-artifact@v4
         with:
@@ -102,6 +97,7 @@ jobs:
         run: |
           mkdir -p gh-pages/allure-reports/${GITHUB_REF_NAME}
           mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}
+
           cp -r allure-report/* gh-pages/allure-reports/${GITHUB_REF_NAME}/ || true
           cp -r playwright-report/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/ || true
 
@@ -126,16 +122,22 @@ jobs:
             cp -r gh-pages/allure-reports/latest/history/* gh-pages/allure-reports/${GITHUB_REF_NAME}/history/ || true
           fi
 
-      - name: Generate index.html with badges, screenshots & traces
-        run: ./scripts/generate-index-html.sh
+      - name: Generate index.html
+        run: |
+          chmod +x scripts/generate-index-html.sh
+          cd gh-pages
+          ../scripts/generate-index-html.sh
 
-      # --- Force commit & push every run ---
-      - name: Commit and push to gh-pages
+      - name: Force gh-pages update marker
+        run: |
+          echo "Last build: $(date)" > gh-pages/build-info.txt
+
+      - name: Commit and push to gh-pages (always)
         run: |
           cd gh-pages
           git add -A
-          git commit -m "Update reports $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit, forcing push"
-          git push origin gh-pages
+          git commit -m "Update reports $(date +'%Y-%m-%d %H:%M:%S')" || echo "No content change but forcing deploy"
+          git push origin gh-pages --force
 
       - name: Comment on PR with workflow run link and reports
         if: ${{ github.event_name == 'pull_request' }}
@@ -144,10 +146,12 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
           issue-number: ${{ github.event.pull_request.number }}
           body: |
-            Playwright test run finished. View the run details here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+            ✅ Playwright test run completed
 
-            🌐 Latest Allure report for this branch: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/${{ github.ref_name }}
-            🌟 Stable "latest" Allure report (master branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/latest
+            🔗 CI Run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
-            🌐 Latest Playwright HTML report for this branch: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/${{ github.ref_name }}
-            🌟 Stable "latest" Playwright HTML report (master branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/latest
+            🌐 Allure report: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/${{ github.ref_name }}
+            🌟 Allure (latest): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/latest
+
+            🌐 Playwright report: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/${{ github.ref_name }}
+            🌟 Playwright (latest): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/latest
