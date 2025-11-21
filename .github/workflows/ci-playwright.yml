@@ -207,16 +207,23 @@ jobs:
       
           echo "</tbody></table></body></html>" >> index.html
 
+#      - name: Commit and push to gh-pages
+#        run: |
+#          cd gh-pages
+#          if ! git diff --cached --quiet; then
+#            git add -A
+#            git commit -m "Update reports and GH Pages index with history"
+#            git push origin gh-pages
+#          else
+#            echo "No changes to deploy, skipping push"
+#          fi
+
       - name: Commit and push to gh-pages
         run: |
           cd gh-pages
-          if ! git diff --cached --quiet; then
-            git add -A
-            git commit -m "Update reports and GH Pages index with history"
-            git push origin gh-pages
-          else
-            echo "No changes to deploy, skipping push"
-          fi
+          git add -A
+          git commit -m "Update reports and GH Pages index $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git push origin gh-pages
 
       - name: Comment on PR with workflow run link and reports
         if: ${{ github.event_name == 'pull_request' }}
