@@ -55,13 +55,15 @@ jobs:
         with:
           name: playwright-html-report
           path: playwright-report
+          if-no-files-found: warn
 
       - name: Upload Playwright JSON results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-results-json
-          path: test-results/results.json
+          path: test-results/*.json
+          if-no-files-found: warn
 
       - name: Upload full test-results folder
         if: always()
@@ -69,6 +71,7 @@ jobs:
         with:
           name: test-results
           path: test-results
+          if-no-files-found: warn
 
       - name: Upload Allure report
         if: always()
@@ -76,6 +79,7 @@ jobs:
         with:
           name: allure-report
           path: allure-report
+          if-no-files-found: warn
 
       # Publish Allure reports to gh-pages
       - name: Cleanup old branch Allure reports
@@ -110,7 +114,7 @@ jobs:
           rm -rf allure-reports/latest
           cp -r allure-reports/main allure-reports/latest
           git add -A
-          git commit -m "Update latest Allure report"
+          git commit -m "Update latest Allure report" || echo "Nothing to commit"
           git push origin gh-pages
 
       # Publish Playwright HTML reports to gh-pages
@@ -134,7 +138,7 @@ jobs:
           rm -rf playwright-reports/latest
           cp -r playwright-reports/main playwright-reports/latest
           git add -A
-          git commit -m "Update latest Playwright HTML report"
+          git commit -m "Update latest Playwright HTML report" || echo "Nothing to commit"
           git push origin gh-pages
 
       # Comment on PRs
