@@ -1,6 +1,6 @@
 name: Playwright Tests CI
 
-# Concurrency to prevent overlapping GH Pages deployments
+# Prevent overlapping deployments
 concurrency:
   group: "playwright-ci-${{ github.ref }}"
   cancel-in-progress: true
@@ -12,15 +12,14 @@ on:
     branches: [ main, master ]
   workflow_dispatch: {}
   schedule:
-    - cron: '0 6 * * *' # daily at 06:00 UTC
+    - cron: '0 6 * * *'
 
 jobs:
-  test:
-    name: Run Playwright tests
+  report-build-status:
+    name: Run Playwright tests & generate reports
     runs-on: ubuntu-latest
     env:
       CI: true
-
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -37,8 +36,6 @@ jobs:
             ~/.npm
             node_modules
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
-          restore-keys: |
-            ${{ runner.os }}-node-
 
       - name: Install dependencies
         run: npm ci
@@ -46,41 +43,33 @@ jobs:
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
-      - name: Capture storage state (accept cookies)
+      - name: Capture storage state
         run: npm run capture:state
 
-      - name: Run Playwright tests & generate Allure report
+      - name: Prepare Allure environment and history
+        run: |
+          mkdir -p allure-results/history
+          if [ -d allure-reports/latest/history ]; then
+            cp -r allure-reports/latest/history/* allure-results/history/ || true
+          fi
+          node scripts/writeAllureEnvironment.js
+
+      - name: Run Playwright tests
         env:
           STORAGE_STATE: state.json
         run: npm run ci
 
-      # Upload artifacts for GitHub Actions UI
+      - name: Generate Allure report
+        run: npx allure generate allure-results -o allure-report --clean
+
       - name: Upload Playwright HTML report
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: playwright-html-report
           path: playwright-report
           if-no-files-found: warn
 
-      - name: Upload Playwright JSON results
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: playwright-results-json
-          path: test-results/*.json
-          if-no-files-found: warn
-
-      - name: Upload full test-results folder
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: test-results
-          if-no-files-found: warn
-
       - name: Upload Allure report
-        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: allure-report
@@ -90,7 +79,7 @@ jobs:
   deploy:
     name: Deploy Reports to GH Pages
     runs-on: ubuntu-latest
-    needs: test
+    needs: report-build-status
     if: ${{ always() }}
     steps:
       - name: Checkout repository
@@ -110,10 +99,9 @@ jobs:
           mkdir -p gh-pages/allure-reports/${GITHUB_REF_NAME}
           mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}
 
-          cp -r allure-report/* gh-pages/allure-reports/${GITHUB_REF_NAME}/ 2>/dev/null || true
-          cp -r playwright-report/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/ 2>/dev/null || true
+          cp -r allure-report/* gh-pages/allure-reports/${GITHUB_REF_NAME}/ || true
+          cp -r playwright-report/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/ || true
 
-          # Update latest for main branch
           if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
             rm -rf gh-pages/allure-reports/latest
             rm -rf gh-pages/playwright-reports/latest
@@ -121,7 +109,14 @@ jobs:
             cp -r gh-pages/playwright-reports/main gh-pages/playwright-reports/latest
           fi
 
-      - name: Generate index.html
+      - name: Preserve Allure history
+        run: |
+          mkdir -p gh-pages/allure-reports/${GITHUB_REF_NAME}/history
+          if [[ -d gh-pages/allure-reports/latest/history ]]; then
+            cp -r gh-pages/allure-reports/latest/history/* gh-pages/allure-reports/${GITHUB_REF_NAME}/history/ || true
+          fi
+
+      - name: Generate index.html with badges
         run: |
           cd gh-pages
           cat << 'EOF' > index.html
@@ -195,7 +190,7 @@ jobs:
           cd gh-pages
           if ! git diff --cached --quiet; then
             git add -A
-            git commit -m "Update reports and GH Pages index"
+            git commit -m "Update reports and GH Pages index with history"
             git push origin gh-pages
           else
             echo "No changes to deploy, skipping push"

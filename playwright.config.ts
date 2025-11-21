@@ -6,12 +6,12 @@ export default defineConfig({
   timeout: 30_000,
   expect: { timeout: 5000 },
   fullyParallel: true,
-  retries: 1, // Optional: retry failed tests once
+  retries: 1, // retry failed tests once
   reporter: [
     ['list'], // console output
-    ['html', { open: 'never' }], // HTML report
-    ['json', { outputFile: 'test-results/results.json' }], // JSON report
-    ['allure-playwright'] // Allure report
+    ['html', { open: 'never' }],
+    ['json', { outputFile: 'test-results/results.json' }],
+    ['allure-playwright'] // Allure
   ],
   use: {
     headless: true,
@@ -21,18 +21,9 @@ export default defineConfig({
     storageState: process.env.STORAGE_STATE || undefined,
   },
   projects: [
-    {
-      name: 'chromium',
-      use: { ...devices['Desktop Chrome'] },
-    },
-    {
-      name: 'firefox',
-      use: { ...devices['Desktop Firefox'] },
-    },
-    {
-      name: 'webkit',
-      use: { ...devices['Desktop Safari'] },
-    },
+    { name: 'chromium', use: { ...devices['Desktop Chrome'] } },
+    { name: 'firefox', use: { ...devices['Desktop Firefox'] } },
+    { name: 'webkit', use: { ...devices['Desktop Safari'] } },
   ],
   outputDir: path.join(__dirname, 'test-results'), // store traces/screenshots
 });
