@@ -121,34 +121,35 @@ jobs:
       # - If the CI run branch is `master`, a `latest` alias is created by
       #   copying the `master` folder to `latest`. This makes it easy to link
       #   to the most recent release/CI output.
-      - name: Assemble site directory
+      - name: Assemble site directory (FIXED LATEST)
         run: |
           set -e
-          REF_NAME=${{ steps.get_latest_run.outputs.branch }}
+      
+          REF_NAME=${{ github.event.workflow_run.head_branch }}
           SITE_DIR=site
+      
           mkdir -p $SITE_DIR/allure-reports/$REF_NAME
           mkdir -p $SITE_DIR/playwright-reports/$REF_NAME
-
-          # Copy downloaded artifact contents (if any) into the site tree.
-          cp -r allure-report/* $SITE_DIR/allure-reports/$REF_NAME/ || true
-          cp -r playwright-report/* $SITE_DIR/playwright-reports/$REF_NAME/ || true
-
-          # Preserve Allure history from the currently published site (if it exists).
-          # This ensures that generated Allure HTML pages still display trends.
+      
+          cp -r allure-report/* $SITE_DIR/allure-reports/$REF_NAME/
+          cp -r playwright-report/* $SITE_DIR/playwright-reports/$REF_NAME/
+      
+          # Preserve Allure history
           if [[ -d gh-pages/allure-reports/latest/history ]]; then
             mkdir -p $SITE_DIR/allure-reports/$REF_NAME/history
-            cp -r gh-pages/allure-reports/latest/history/* $SITE_DIR/allure-reports/$REF_NAME/history/ || true
+            cp -r gh-pages/allure-reports/latest/history/* $SITE_DIR/allure-reports/$REF_NAME/history/
           fi
-
-          # If the run belongs to the `master` branch, update `latest` symlink
-          # (implemented as a directory copy here) so root pages link to the
-          # newest master reports. We remove any existing `latest` before copying
-          # to avoid stale files.
+      
+          # ✅ FORCE latest to always point to most recent master
           if [[ "$REF_NAME" == "master" ]]; then
-            rm -rf $SITE_DIR/allure-reports/latest || true
-            rm -rf $SITE_DIR/playwright-reports/latest || true
-            cp -r $SITE_DIR/allure-reports/master $SITE_DIR/allure-reports/latest || true
-            cp -r $SITE_DIR/playwright-reports/master $SITE_DIR/playwright-reports/latest || true
+            echo "Updating Allure latest..."
+      
+            rm -rf $SITE_DIR/allure-reports/latest
+            mkdir -p $SITE_DIR/allure-reports/latest
+      
+            cp -r $SITE_DIR/allure-reports/master/* $SITE_DIR/allure-reports/latest/
+      
+            echo "Latest Allure refreshed successfully"
           fi
 
       # Step: Generate a simple index.html for the published site. This script
