@@ -58,6 +58,11 @@ jobs:
       - name: Write Allure environment
         run: node scripts/writeAllureEnvironment.js
 
+      - name: Inject build metadata into Allure
+        run: |
+          echo "Build Time=$(date -u)" >> allure-results/environment.properties
+          echo "GitHub Run ID=$GITHUB_RUN_ID" >> allure-results/environment.properties
+
       - name: Generate Allure report
         run: npx allure generate allure-results -o allure-report --clean
 
@@ -93,18 +98,25 @@ jobs:
         run: |
           git clone --branch gh-pages https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
 
+      - name: Download Allure report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: allure-report
+          path: allure-report
+
+      - name: Download Playwright report artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: playwright-html-report
+          path: playwright-report
+
       - name: Copy reports into gh-pages
         run: |
           mkdir -p gh-pages/allure-reports/${GITHUB_REF_NAME}
           mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}
 
-          cp -r allure-report/* gh-pages/allure-reports/${GITHUB_REF_NAME}/ || true
-          cp -r playwright-report/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/ || true
-
-          mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}/screenshots
-          mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}/traces
-          cp -r test-results/screenshots/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/screenshots/ 2>/dev/null || true
-          cp -r test-results/traces/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/traces/ 2>/dev/null || true
+          cp -r allure-report/* gh-pages/allure-reports/${GITHUB_REF_NAME}/
+          cp -r playwright-report/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/
 
       - name: Update latest for master branch
         run: |
