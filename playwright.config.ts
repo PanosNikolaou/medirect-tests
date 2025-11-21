@@ -1,28 +1,38 @@
 import { defineConfig, devices } from '@playwright/test';
+import path from 'path';
 
 export default defineConfig({
   testDir: 'tests',
   timeout: 30_000,
   expect: { timeout: 5000 },
   fullyParallel: true,
-  // Reporters: list for console output, html and json for CI/inspection
+  retries: 1, // Optional: retry failed tests once
   reporter: [
-    ['list'],
-    ['html', { open: 'never' }],
-    ['json', { outputFile: 'test-results/results.json' }]
+    ['list'], // console output
+    ['html', { open: 'never' }], // HTML report
+    ['json', { outputFile: 'test-results/results.json' }], // JSON report
+    ['allure-playwright'] // Allure report
   ],
   use: {
     headless: true,
-    // Allow tests to use a pre-captured storage state (set in CI via env STORAGE_STATE)
-    storageState: process.env.STORAGE_STATE || undefined,
-    baseURL: 'http://localhost:3000',
     actionTimeout: 5000,
+    baseURL: 'http://localhost:3000',
     trace: 'on-first-retry',
+    storageState: process.env.STORAGE_STATE || undefined,
   },
   projects: [
     {
       name: 'chromium',
       use: { ...devices['Desktop Chrome'] },
     },
+    {
+      name: 'firefox',
+      use: { ...devices['Desktop Firefox'] },
+    },
+    {
+      name: 'webkit',
+      use: { ...devices['Desktop Safari'] },
+    },
   ],
+  outputDir: path.join(__dirname, 'test-results'), // store traces/screenshots
 });
