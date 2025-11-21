@@ -1,6 +1,6 @@
 name: Playwright Tests CI
 
-# Concurrency to prevent overlapping GH Pages deployments
+# Prevent overlapping GH Pages deployments
 concurrency:
   group: "playwright-ci-${{ github.ref }}"
   cancel-in-progress: true
@@ -15,11 +15,13 @@ on:
     - cron: '0 6 * * *' # daily at 06:00 UTC
 
 jobs:
-  test:
-    name: Run Playwright tests
+  report-build:
+    name: Build Playwright & Allure reports
     runs-on: ubuntu-latest
     env:
       CI: true
+    outputs:
+      reports-ready: ${{ steps.set-output.outputs.ready }}
 
     steps:
       - name: Checkout repository
@@ -54,40 +56,35 @@ jobs:
           STORAGE_STATE: state.json
         run: npm run ci
 
-      # Upload artifacts for GitHub Actions UI
-      - name: Upload Playwright HTML report
-        if: always()
+      - name: Upload reports artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: playwright-html-report
-          path: playwright-report
+          name: playwright-reports
+          path: |
+            playwright-report
+            allure-report
+            test-results
           if-no-files-found: warn
 
-      - name: Upload Playwright JSON results
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Set report-build-status
+        id: set-output
+        run: echo "ready=true" >> $GITHUB_OUTPUT
+
+  deploy:
+    name: Deploy reports to GH Pages
+    runs-on: ubuntu-latest
+    needs: report-build
+    if: needs.report-build.outputs.reports-ready == 'true'
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download reports artifacts
+        uses: actions/download-artifact@v4
         with:
-          name: playwright-results-json
-          path: test-results/*.json
-          if-no-files-found: warn
+          name: playwright-reports
+          path: ./reports
 
-      - name: Upload full test-results folder
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-results
-          path: test-results
-          if-no-files-found: warn
-
-      - name: Upload Allure report
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: allure-report
-          path: allure-report
-          if-no-files-found: warn
-
-      # Create deployment lock to avoid simultaneous gh-pages conflicts
       - name: GH Pages deployment lock
         id: ghpages-lock
         run: |
@@ -101,41 +98,43 @@ jobs:
             echo "skip_publish=false" >> $GITHUB_OUTPUT
           fi
 
-      # Publish Playwright HTML report to GH Pages
       - name: Publish Playwright HTML report
         if: steps.ghpages-lock.outputs.skip_publish == 'false'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GH_PAGES_TOKEN }}
-          publish_dir: ./playwright-report
+          publish_dir: ./reports/playwright-report
           publish_branch: gh-pages
           destination_dir: playwright-reports/${{ github.ref_name }}
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
           keep_files: true
 
-      # Publish Allure report to GH Pages
       - name: Publish Allure report
         if: steps.ghpages-lock.outputs.skip_publish == 'false'
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GH_PAGES_TOKEN }}
-          publish_dir: ./allure-report
+          publish_dir: ./reports/allure-report
           publish_branch: gh-pages
           destination_dir: allure-reports/${{ github.ref_name }}
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
           keep_files: true
 
-      # Generate enhanced GH Pages index.html with badges
       - name: Generate GH Pages index.html
         if: steps.ghpages-lock.outputs.skip_publish == 'false'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone --branch gh-pages https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
+          git clone --branch gh-pages --depth 1 https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
           cd gh-pages
 
+          # Copy reports from artifact folder
+          cp -r ../reports/playwright-report playwright-reports/${{ github.ref_name }}
+          cp -r ../reports/allure-report allure-reports/${{ github.ref_name }}
+
+          # Build index.html
           cat << 'EOF' > index.html
           <!DOCTYPE html>
           <html lang="en">
@@ -172,7 +171,6 @@ jobs:
           EOF
 
           branches=$(ls -1 allure-reports playwright-reports 2>/dev/null | sort -u)
-
           declare -A branch_times
           for branch in $branches; do
             allure_time=$(stat -c %Y allure-reports/$branch 2>/dev/null || echo 0)
@@ -203,17 +201,17 @@ jobs:
           done
 
           echo "</tbody></table></body></html>" >> index.html
+
           git add index.html
           git commit -m "Update GH Pages index.html with badges" || echo "Nothing to commit"
           git push origin gh-pages
 
-      # Update latest reports for main branch
       - name: Update latest reports for main branch
         if: github.ref_name == 'main' && steps.ghpages-lock.outputs.skip_publish == 'false'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone --branch gh-pages https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
+          git clone --branch gh-pages --depth 1 https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
           cd gh-pages
           rm -rf allure-reports/latest playwright-reports/latest
           cp -r allure-reports/main allure-reports/latest
@@ -222,7 +220,6 @@ jobs:
           git commit -m "Update latest reports" || echo "Nothing to commit"
           git push origin gh-pages
 
-      # Comment on PRs with workflow run link and reports
       - name: Comment on PR with workflow run link and reports
         if: ${{ github.event_name == 'pull_request' }}
         uses: peter-evans/create-or-update-comment@v4
