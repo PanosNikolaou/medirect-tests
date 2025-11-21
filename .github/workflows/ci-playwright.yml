@@ -48,6 +48,7 @@ jobs:
           STORAGE_STATE: state.json
         run: npm run ci
 
+      # Upload artifacts for GitHub Actions UI
       - name: Upload Playwright HTML report
         if: always()
         uses: actions/upload-artifact@v4
@@ -76,7 +77,8 @@ jobs:
           name: allure-report
           path: allure-report
 
-      - name: Cleanup old branch reports from gh-pages
+      # Publish Allure reports to gh-pages
+      - name: Cleanup old branch Allure reports
         if: github.ref_name != 'main'
         run: |
           git config --global user.name "github-actions[bot]"
@@ -89,7 +91,7 @@ jobs:
           git push origin gh-pages
 
       - name: Publish Allure report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v7
+        uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
           publish_dir: ./allure-report
@@ -98,7 +100,7 @@ jobs:
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
 
-      - name: Update latest report for main branch
+      - name: Update latest Allure report for main branch
         if: github.ref_name == 'main'
         run: |
           git config --global user.name "github-actions[bot]"
@@ -111,7 +113,32 @@ jobs:
           git commit -m "Update latest Allure report"
           git push origin gh-pages
 
-      - name: Comment on PR with workflow run link and Allure report
+      # Publish Playwright HTML reports to gh-pages
+      - name: Publish Playwright HTML report to GitHub Pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./playwright-report
+          publish_branch: gh-pages
+          destination_dir: playwright-reports/${{ github.ref_name }}
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+
+      - name: Update latest Playwright HTML report for main branch
+        if: github.ref_name == 'main'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages
+          cd gh-pages
+          rm -rf playwright-reports/latest
+          cp -r playwright-reports/main playwright-reports/latest
+          git add -A
+          git commit -m "Update latest Playwright HTML report"
+          git push origin gh-pages
+
+      # Comment on PRs
+      - name: Comment on PR with workflow run link and reports
         if: ${{ github.event_name == 'pull_request' }}
         uses: peter-evans/create-or-update-comment@v4
         with:
@@ -123,5 +150,7 @@ jobs:
             Artifacts (HTML report, JSON results, Allure report) are attached to the run and can be downloaded from the Actions UI.
             
             🌐 Latest Allure report for this branch: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/${{ github.ref_name }}
-            
             🌟 Stable "latest" Allure report (main branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/latest
+
+            🌐 Latest Playwright HTML report for this branch: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/${{ github.ref_name }}
+            🌟 Stable "latest" Playwright HTML report (main branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/latest
