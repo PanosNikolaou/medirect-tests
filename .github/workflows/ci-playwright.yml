@@ -1,6 +1,5 @@
 name: Playwright Tests CI
 
-# Prevent overlapping deployments
 concurrency:
   group: "playwright-ci-${{ github.ref }}"
   cancel-in-progress: true
@@ -46,22 +45,27 @@ jobs:
       - name: Capture storage state
         run: npm run capture:state
 
-      - name: Write Allure environment
-        run: node scripts/writeAllureEnvironment.js
-
-      - name: Preserve Allure history
-        run: |
-          mkdir -p allure-results/history
-          cp -r allure-reports/latest/history/* allure-results/history/ || true
-
+      # --- Run Playwright tests first ---
       - name: Run Playwright tests
         env:
           STORAGE_STATE: state.json
         run: npm run ci
 
+      # --- Preserve Allure history before generating report ---
+      - name: Preserve Allure history
+        run: |
+          mkdir -p allure-results/history
+          cp -r allure-reports/latest/history/* allure-results/history/ || true
+
+      # --- Write environment for Allure ---
+      - name: Write Allure environment
+        run: node scripts/writeAllureEnvironment.js
+
+      # --- Generate Allure report ---
       - name: Generate Allure report
         run: npx allure generate allure-results -o allure-report --clean
 
+      # --- Upload reports as artifacts ---
       - name: Upload Playwright HTML report
         uses: actions/upload-artifact@v4
         with:
@@ -98,11 +102,9 @@ jobs:
         run: |
           mkdir -p gh-pages/allure-reports/${GITHUB_REF_NAME}
           mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}
-
           cp -r allure-report/* gh-pages/allure-reports/${GITHUB_REF_NAME}/ || true
           cp -r playwright-report/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/ || true
 
-          # Copy screenshots & traces
           mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}/screenshots
           mkdir -p gh-pages/playwright-reports/${GITHUB_REF_NAME}/traces
           cp -r test-results/screenshots/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/screenshots/ 2>/dev/null || true
@@ -127,92 +129,15 @@ jobs:
       - name: Generate index.html with badges, screenshots & traces
         run: |
           cd gh-pages
-          cat << 'EOF' > index.html
-          <!DOCTYPE html>
-          <html lang="en">
-          <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Playwright & Allure Reports</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 2rem; background: #f7f7f7; }
-              h1 { color: #2c3e50; }
-              table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
-              th, td { padding: 0.75rem; border: 1px solid #ddd; text-align: left; }
-              th { background-color: #2c3e50; color: #fff; }
-              tr.main-branch { background-color: #dff0d8; font-weight: bold; }
-              a { text-decoration: none; color: #3498db; }
-              a:hover { text-decoration: underline; }
-              .badge { display: inline-block; padding: 2px 6px; font-size: 0.8em; border-radius: 4px; color: #fff; margin-left: 5px; }
-              .badge-main { background-color: #27ae60; }
-              .badge-latest { background-color: #e67e22; }
-              img.screenshot { height:50px; border:1px solid #ddd; }
-            </style>
-          </head>
-          <body>
-            <h1>Playwright & Allure Reports</h1>
-            <table>
-              <thead>
-                <tr>
-                  <th>Branch</th>
-                  <th>Allure Report</th>
-                  <th>Playwright HTML Report</th>
-                  <th>Last Updated</th>
-                  <th>Screenshots</th>
-                  <th>Traces</th>
-                </tr>
-              </thead>
-              <tbody>
-          EOF
+          # --- Generate HTML page ---
+          ./scripts/generate-index-html.sh
 
-          branches=$(ls -1 allure-reports playwright-reports 2>/dev/null | sort -u)
-          declare -A branch_times
-          for branch in $branches; do
-            allure_time=$(stat -c %Y allure-reports/$branch 2>/dev/null || echo 0)
-            playwright_time=$(stat -c %Y playwright-reports/$branch 2>/dev/null || echo 0)
-            latest_time=$(( allure_time > playwright_time ? allure_time : playwright_time ))
-            branch_times[$branch]=$latest_time
-          done
-
-          main_branch="master"
-          latest_branch=$(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | head -n 1 | awk '{print $1}')
-
-          for branch in $(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | awk '{print $1}'); do
-            row_class=""
-            badges=""
-            [[ "$branch" == "$main_branch" ]] && row_class="main-branch" && badges="$badges <span class='badge badge-main'>MASTER</span>"
-            [[ "$branch" == "$latest_branch" ]] && badges="$badges <span class='badge badge-latest'>LATEST</span>"
-            last_updated=$(date -d @"${branch_times[$branch]}" '+%Y-%m-%d %H:%M:%S')
-
-            allure_link="allure-reports/$branch"
-            playwright_link="playwright-reports/$branch"
-            [[ ! -d "$allure_link" ]] && allure_link="#"
-            [[ ! -d "$playwright_link" ]] && playwright_link="#"
-
-            screenshot_file=$(ls -1 playwright-reports/$branch/screenshots 2>/dev/null | head -n1)
-            trace_file=$(ls -1 playwright-reports/$branch/traces 2>/dev/null | head -n1)
-            screenshot_html=""
-            trace_html=""
-            [[ -n "$screenshot_file" ]] && screenshot_html="<a href='playwright-reports/$branch/screenshots/$screenshot_file' target='_blank'><img src='playwright-reports/$branch/screenshots/$screenshot_file' class='screenshot'></a>"
-            [[ -n "$trace_file" ]] && trace_html="<a href='playwright-reports/$branch/traces/$trace_file' target='_blank'>Trace</a>"
-
-            echo "<tr class='$row_class'>
-                    <td>$branch $badges</td>
-                    <td><a href='$allure_link' target='_blank'>Allure</a></td>
-                    <td><a href='$playwright_link' target='_blank'>Playwright</a></td>
-                    <td>$last_updated</td>
-                    <td>$screenshot_html</td>
-                    <td>$trace_html</td>
-                  </tr>" >> index.html
-          done
-
-          echo "</tbody></table></body></html>" >> index.html
-
+      # --- Force commit & push every run ---
       - name: Commit and push to gh-pages
         run: |
           cd gh-pages
           git add -A
-          git commit -m "Update reports and GH Pages index $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit"
+          git commit -m "Update reports $(date +'%Y-%m-%d %H:%M:%S')" || echo "No changes to commit, forcing push"
           git push origin gh-pages
 
       - name: Comment on PR with workflow run link and reports
@@ -225,7 +150,7 @@ jobs:
             Playwright test run finished. View the run details here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
 
             🌐 Latest Allure report for this branch: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/${{ github.ref_name }}
-            🌟 Stable "latest" Allure report (main branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/latest
+            🌟 Stable "latest" Allure report (master branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/latest
 
             🌐 Latest Playwright HTML report for this branch: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/${{ github.ref_name }}
-            🌟 Stable "latest" Playwright HTML report (main branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/latest
+            🌟 Stable "latest" Playwright HTML report (master branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/playwright-reports/latest
