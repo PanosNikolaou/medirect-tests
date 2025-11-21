@@ -7,9 +7,9 @@ concurrency:
 
 on:
   push:
-    branches: [ main, master ]
+    branches: [ master ]
   pull_request:
-    branches: [ main, master ]
+    branches: [ master ]
   workflow_dispatch: {}
   schedule:
     - cron: '0 6 * * *'
@@ -108,11 +108,13 @@ jobs:
           cp -r test-results/screenshots/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/screenshots/ 2>/dev/null || true
           cp -r test-results/traces/* gh-pages/playwright-reports/${GITHUB_REF_NAME}/traces/ 2>/dev/null || true
 
-          if [[ "${GITHUB_REF_NAME}" == "main" ]]; then
+      - name: Update latest for master branch
+        run: |
+          if [[ "${GITHUB_REF_NAME}" == "master" ]]; then
             rm -rf gh-pages/allure-reports/latest
             rm -rf gh-pages/playwright-reports/latest
-            cp -r gh-pages/allure-reports/main gh-pages/allure-reports/latest
-            cp -r gh-pages/playwright-reports/main gh-pages/playwright-reports/latest
+            cp -r gh-pages/allure-reports/master gh-pages/allure-reports/latest
+            cp -r gh-pages/playwright-reports/master gh-pages/playwright-reports/latest
           fi
 
       - name: Preserve Allure history
@@ -162,7 +164,7 @@ jobs:
               </thead>
               <tbody>
           EOF
-      
+
           branches=$(ls -1 allure-reports playwright-reports 2>/dev/null | sort -u)
           declare -A branch_times
           for branch in $branches; do
@@ -171,30 +173,29 @@ jobs:
             latest_time=$(( allure_time > playwright_time ? allure_time : playwright_time ))
             branch_times[$branch]=$latest_time
           done
-      
-          main_branch="main"
+
+          main_branch="master"
           latest_branch=$(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | head -n 1 | awk '{print $1}')
-      
+
           for branch in $(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | awk '{print $1}'); do
             row_class=""
             badges=""
-            [[ "$branch" == "$main_branch" ]] && row_class="main-branch" && badges="$badges <span class='badge badge-main'>MAIN</span>"
+            [[ "$branch" == "$main_branch" ]] && row_class="main-branch" && badges="$badges <span class='badge badge-main'>MASTER</span>"
             [[ "$branch" == "$latest_branch" ]] && badges="$badges <span class='badge badge-latest'>LATEST</span>"
             last_updated=$(date -d @"${branch_times[$branch]}" '+%Y-%m-%d %H:%M:%S')
-      
+
             allure_link="allure-reports/$branch"
             playwright_link="playwright-reports/$branch"
             [[ ! -d "$allure_link" ]] && allure_link="#"
             [[ ! -d "$playwright_link" ]] && playwright_link="#"
-      
-            # Screenshot and trace preview
+
             screenshot_file=$(ls -1 playwright-reports/$branch/screenshots 2>/dev/null | head -n1)
             trace_file=$(ls -1 playwright-reports/$branch/traces 2>/dev/null | head -n1)
             screenshot_html=""
             trace_html=""
             [[ -n "$screenshot_file" ]] && screenshot_html="<a href='playwright-reports/$branch/screenshots/$screenshot_file' target='_blank'><img src='playwright-reports/$branch/screenshots/$screenshot_file' class='screenshot'></a>"
             [[ -n "$trace_file" ]] && trace_html="<a href='playwright-reports/$branch/traces/$trace_file' target='_blank'>Trace</a>"
-      
+
             echo "<tr class='$row_class'>
                     <td>$branch $badges</td>
                     <td><a href='$allure_link' target='_blank'>Allure</a></td>
@@ -204,19 +205,8 @@ jobs:
                     <td>$trace_html</td>
                   </tr>" >> index.html
           done
-      
-          echo "</tbody></table></body></html>" >> index.html
 
-#      - name: Commit and push to gh-pages
-#        run: |
-#          cd gh-pages
-#          if ! git diff --cached --quiet; then
-#            git add -A
-#            git commit -m "Update reports and GH Pages index with history"
-#            git push origin gh-pages
-#          else
-#            echo "No changes to deploy, skipping push"
-#          fi
+          echo "</tbody></table></body></html>" >> index.html
 
       - name: Commit and push to gh-pages
         run: |
