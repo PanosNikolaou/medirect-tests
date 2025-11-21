@@ -135,8 +135,11 @@ jobs:
       - name: Commit and push to gh-pages (always)
         run: |
           cd gh-pages
+          git config user.name "GitHub Actions"
+          git config user.email "actions@github.com"
+      
           git add -A
-          git commit -m "Update reports $(date +'%Y-%m-%d %H:%M:%S')" || echo "No content change but forcing deploy"
+          git commit --allow-empty -m "Update reports $(date +'%Y-%m-%d %H:%M:%S')"
           git push origin gh-pages --force
 
       - name: Comment on PR with workflow run link and reports
