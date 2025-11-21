@@ -127,10 +127,7 @@ jobs:
           fi
 
       - name: Generate index.html with badges, screenshots & traces
-        run: |
-          cd gh-pages
-          # --- Generate HTML page ---
-          ./scripts/generate-index-html.sh
+        run: ./scripts/generate-index-html.sh
 
       # --- Force commit & push every run ---
       - name: Commit and push to gh-pages
