@@ -1,6 +1,6 @@
-import fs from 'fs';
-import path from 'path';
-import { chromium, firefox, webkit } from '@playwright/test';
+const fs = require('fs');
+const path = require('path');
+const { chromium, firefox, webkit } = require('@playwright/test');
 
 (async function writeAllureEnvironment() {
   try {
