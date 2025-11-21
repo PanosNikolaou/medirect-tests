@@ -81,44 +81,8 @@ jobs:
           path: allure-report
           if-no-files-found: warn
 
-      # Publish Allure reports to gh-pages
-      - name: Cleanup old branch Allure reports
-        if: github.ref_name != 'main'
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages
-          cd gh-pages
-          rm -rf allure-reports/${{ github.ref_name }}
-          git add -A
-          git commit -m "Cleanup old allure report for branch ${{ github.ref_name }}" || echo "Nothing to commit"
-          git push origin gh-pages
-
-      - name: Publish Allure report to GitHub Pages
-        uses: peaceiris/actions-gh-pages@v4
-        with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          publish_dir: ./allure-report
-          publish_branch: gh-pages
-          destination_dir: allure-reports/${{ github.ref_name }}
-          user_name: 'github-actions[bot]'
-          user_email: 'github-actions[bot]@users.noreply.github.com'
-
-      - name: Update latest Allure report for main branch
-        if: github.ref_name == 'main'
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages
-          cd gh-pages
-          rm -rf allure-reports/latest
-          cp -r allure-reports/main allure-reports/latest
-          git add -A
-          git commit -m "Update latest Allure report" || echo "Nothing to commit"
-          git push origin gh-pages
-
-      # Publish Playwright HTML reports to gh-pages
-      - name: Publish Playwright HTML report to GitHub Pages
+      # Publish Playwright HTML report to GitHub Pages
+      - name: Publish Playwright HTML report
         uses: peaceiris/actions-gh-pages@v4
         with:
           github_token: ${{ secrets.GITHUB_TOKEN }}
@@ -127,21 +91,126 @@ jobs:
           destination_dir: playwright-reports/${{ github.ref_name }}
           user_name: 'github-actions[bot]'
           user_email: 'github-actions[bot]@users.noreply.github.com'
+          keep_files: true
 
-      - name: Update latest Playwright HTML report for main branch
+      # Publish Allure report to GitHub Pages
+      - name: Publish Allure report
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./allure-report
+          publish_branch: gh-pages
+          destination_dir: allure-reports/${{ github.ref_name }}
+          user_name: 'github-actions[bot]'
+          user_email: 'github-actions[bot]@users.noreply.github.com'
+          keep_files: true
+
+      # Generate enhanced GH Pages index.html with badges
+      - name: Generate GH Pages index.html
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages
+          cd gh-pages
+
+          # Start HTML
+          echo "<!DOCTYPE html>
+          <html lang='en'>
+          <head>
+            <meta charset='UTF-8'>
+            <meta name='viewport' content='width=device-width, initial-scale=1.0'>
+            <title>Playwright & Allure Reports</title>
+            <style>
+              body { font-family: Arial, sans-serif; padding: 2rem; background: #f7f7f7; }
+              h1 { color: #2c3e50; }
+              table { width: 100%; border-collapse: collapse; margin-top: 1rem; }
+              th, td { padding: 0.75rem; border: 1px solid #ddd; text-align: left; }
+              th { background-color: #2c3e50; color: #fff; }
+              tr.main-branch { background-color: #dff0d8; font-weight: bold; }
+              a { text-decoration: none; color: #3498db; }
+              a:hover { text-decoration: underline; }
+              .badge { display: inline-block; padding: 2px 6px; font-size: 0.8em; border-radius: 4px; color: #fff; margin-left: 5px; }
+              .badge-main { background-color: #27ae60; }
+              .badge-latest { background-color: #e67e22; }
+            </style>
+          </head>
+          <body>
+            <h1>Playwright & Allure Reports</h1>
+            <table>
+              <thead>
+                <tr>
+                  <th>Branch</th>
+                  <th>Allure Report</th>
+                  <th>Playwright HTML Report</th>
+                  <th>Last Updated</th>
+                </tr>
+              </thead>
+              <tbody>" > index.html
+
+          # Get all branch names from either report folder
+          branches=$(ls -1 allure-reports playwright-reports | sort -u)
+
+          # Collect branch timestamps for sorting
+          declare -A branch_times
+          for branch in $branches; do
+            allure_time=$(stat -c %Y allure-reports/$branch 2>/dev/null || echo 0)
+            playwright_time=$(stat -c %Y playwright-reports/$branch 2>/dev/null || echo 0)
+            latest_time=$(( allure_time > playwright_time ? allure_time : playwright_time ))
+            branch_times[$branch]=$latest_time
+          done
+
+          # Determine main branch and latest branch
+          main_branch="main"
+          latest_branch=$(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | head -n 1 | awk '{print $1}')
+
+          # Sort branches by timestamp descending
+          for branch in $(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | awk '{print $1}'); do
+            row_class=""
+            badges=""
+
+            [[ "$branch" == "$main_branch" ]] && row_class="main-branch" && badges="$badges <span class='badge badge-main'>MAIN</span>"
+            [[ "$branch" == "$latest_branch" ]] && badges="$badges <span class='badge badge-latest'>LATEST</span>"
+
+            # Format last updated timestamp
+            last_updated=$(date -d @"${branch_times[$branch]}" '+%Y-%m-%d %H:%M:%S')
+
+            # Check if reports exist
+            allure_link="allure-reports/$branch"
+            playwright_link="playwright-reports/$branch"
+            [[ ! -d "$allure_link" ]] && allure_link="#"
+            [[ ! -d "$playwright_link" ]] && playwright_link="#"
+
+            echo "<tr class='$row_class'>
+                    <td>$branch $badges</td>
+                    <td><a href='$allure_link' target='_blank'>Allure</a></td>
+                    <td><a href='$playwright_link' target='_blank'>Playwright</a></td>
+                    <td>$last_updated</td>
+                  </tr>" >> index.html
+          done
+
+          # Finish HTML
+          echo "</tbody></table></body></html>" >> index.html
+
+          git add index.html
+          git commit -m "Update GH Pages index.html with badges" || echo "Nothing to commit"
+          git push origin gh-pages
+
+      # Update latest reports for main branch
+      - name: Update latest reports for main branch
         if: github.ref_name == 'main'
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
           git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages
           cd gh-pages
-          rm -rf playwright-reports/latest
+          rm -rf allure-reports/latest playwright-reports/latest
+          cp -r allure-reports/main allure-reports/latest
           cp -r playwright-reports/main playwright-reports/latest
           git add -A
-          git commit -m "Update latest Playwright HTML report" || echo "Nothing to commit"
+          git commit -m "Update latest reports" || echo "Nothing to commit"
           git push origin gh-pages
 
-      # Comment on PRs
+      # Comment on PRs with workflow run link and reports
       - name: Comment on PR with workflow run link and reports
         if: ${{ github.event_name == 'pull_request' }}
         uses: peter-evans/create-or-update-comment@v4
@@ -150,9 +219,7 @@ jobs:
           issue-number: ${{ github.event.pull_request.number }}
           body: |
             Playwright test run finished. View the run details here: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-            
-            Artifacts (HTML report, JSON results, Allure report) are attached to the run and can be downloaded from the Actions UI.
-            
+
             🌐 Latest Allure report for this branch: https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/${{ github.ref_name }}
             🌟 Stable "latest" Allure report (main branch): https://${{ github.repository_owner }}.github.io/${{ github.repository }}/allure-reports/latest
 
