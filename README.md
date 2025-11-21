@@ -1,177 +1,249 @@
 # Medirect Tests
 
-Small Playwright test suite for the MeDirect equities search pages.
+Automated Playwright test framework for the MeDirect equities search
+pages with integrated Allure reporting, GitHub Pages dashboards, and
+CI/CD automation.
 
----
+------------------------------------------------------------------------
 
-## Overview
+## Key Features
 
-This repository contains Playwright tests written in TypeScript that exercise the MeDirect equities search UI.  
-It includes automated handling of shadow DOM elements, fallback DOM selectors, and automatic screenshots on test failures.
+-   Playwright + TypeScript end-to-end testing
+-   Shadow DOM handling & resilient selectors
+-   Automatic screenshots & traces on failures
+-   Allure test reporting with history & trends
+-   GitHub Pages live dashboard
+-   CI automation via GitHub Actions
+-   Persistent storage state for cookies
 
----
+------------------------------------------------------------------------
 
-## Files of Interest
+## Live Reports
 
-- `tests/searchEquities.spec.ts` — the main test suite  
-- `pages/` — page objects used by the tests (`BasePage`, `EquitiesSearchPage`, `EquityDetailsPage`)  
+Reports are automatically published on every CI run.
 
----
+### Allure Reports
+
+-   Latest (master):
+    https://`<your-username>`{=html}.github.io/`<your-repo>`{=html}/allure-reports/latest
+-   Branch-based:
+    https://`<your-username>`{=html}.github.io/`<your-repo>`{=html}/allure-reports/`<branch-name>`{=html}
+
+### Playwright HTML Reports
+
+-   Latest (master):
+    https://`<your-username>`{=html}.github.io/`<your-repo>`{=html}/playwright-reports/latest
+
+------------------------------------------------------------------------
+
+## Repository Structure
+
+    .
+    ├── tests/
+    │   └── searchEquities.spec.ts
+    ├── pages/
+    │   ├── BasePage.ts
+    │   ├── EquitiesSearchPage.ts
+    │   └── EquityDetailsPage.ts
+    ├── scripts/
+    │   ├── writeAllureEnvironment.js
+    │   └── generate-index-html.sh
+    ├── .github/workflows/
+    │   └── ci-playwright.yml
+    └── playwright.config.ts
+
+------------------------------------------------------------------------
 
 ## Quick Setup
 
-1. Install project dependencies:
+Install dependencies:
 
-```bash
+``` bash
 npm install
 ```
 
-2. Install Playwright browsers (required the first time):
+Install Playwright browsers:
 
-```bash
+``` bash
 npx playwright install
 ```
 
----
+------------------------------------------------------------------------
 
 ## Running Tests
 
-- **Run the full test suite (headed):**
+### Full suite (headed)
 
-```bash
+``` bash
 npx playwright test --headed
 ```
 
-- **Run the full test suite (headless / CI):**
+### Full suite (headless / CI-style)
 
-```bash
+``` bash
 npx playwright test
 ```
 
-- **Run a single test file (headed):**
+### Single test file
 
-```bash
+``` bash
 npx playwright test tests/searchEquities.spec.ts --headed
 ```
 
-- **Run a single test by title (example):**
+### Single test by name
 
-```bash
+``` bash
 npx playwright test -g "Search for a non-existent equity" --headed
 ```
 
----
+------------------------------------------------------------------------
 
 ## NPM Scripts
 
-Convenience scripts from `package.json`:
+    npm run test        # headless
+    npm run test:headed # headed mode
+    npm run report:open # open Playwright HTML report
+    npm run ci          # CI execution mode
 
-```bash
-npm run test        # headless
-npm run test:headed # headed mode
-npm run report:open # open the last HTML report
+------------------------------------------------------------------------
+
+## Passing an Equity Name
+
+Supported via:
+
+### Environment Variable
+
+``` bash
+EQUITY_NAME=FOO_BAR_NOT_REAL npm run test
 ```
 
----
+### CLI Argument
 
-## Passing an Equity Name via CLI or Environment
-
-Tests accept an equity name through:
-
-- **Environment variable**: `EQUITY_NAME`  
-- **CLI argument**: `--equity=NAME` or `--equity NAME`
-
-If none is provided for non-existent-equity tests, a unique name like `NON_EXISTENT_<timestamp>` is generated.
-
-**Examples:**
-
-```bash
-# via env var
-EQUITY_NAME=FOO_BAR_NOT_REAL npm run test:headed -- -g "Search for a non-existent equity"
-
-# via CLI arg (Playwright passes extra args after --)
-npx playwright test -g "Search for a non-existent equity" -- --equity=FOO_BAR_NOT_REAL --headed
+``` bash
+npx playwright test -g "Search for a non-existent equity" -- --equity=FOO_BAR_NOT_REAL
 ```
 
----
+If not supplied, a random non-existent equity name is generated
+automatically.
 
-## Screenshots on Failure
+------------------------------------------------------------------------
 
-- Any test failure automatically captures a **full-page screenshot** in:
+## Screenshots & Traces
 
+On failure:
+
+-   Full-page screenshots stored in: test-results/screenshots/
+
+-   Traces stored in: test-results/traces/
+
+Filename example:
+
+    NON_EXISTENT_1698501234567.png
+
+------------------------------------------------------------------------
+
+## Cookie Persistence
+
+Recommended for CI:
+
+1.  Accept cookies once manually & save state:
+
+``` ts
+await context.storageState({ path: 'state.json' });
 ```
-test-results/screenshots/
+
+2.  Configure Playwright:
+
+``` ts
+test.use({ storageState: 'state.json' });
 ```
 
-- File names include the equity name and timestamp, e.g.:
+------------------------------------------------------------------------
 
+## Debugging
+
+-   Run visually:
+
+``` bash
+npx playwright test --debug
 ```
-NONEXISTENT123_1698501234567.png
+
+-   Pause execution:
+
+``` bash
+PWDEBUG=1 npx playwright test
 ```
 
-- This helps quickly debug UI failures or missing elements.
+------------------------------------------------------------------------
 
----
+## CI & GitHub Actions
 
-## Notes and Tips
+Workflow file: `.github/workflows/ci-playwright.yml`
 
-- **Cookie / consent popup:** The framework attempts to automatically click the cookie "Accept" button (`pages/BasePage.ts`). If the site changes the button text or displays it in an iframe, you may need to update this helper.
+### What it does:
 
-- **Persisting cookie consent between runs (recommended for CI):**
-  1. Run a small script or test that navigates to the site, accepts cookies, and saves storage state to `state.json`:
+-   Runs on:
+    -   push / pull_request to master
+    -   manual trigger
+    -   daily schedule (06:00 UTC)
+-   Executes Playwright tests
+-   Generates Allure + Playwright reports
+-   Publishes reports to GitHub Pages
+-   Preserves Allure history
+-   Forces gh-pages update every run
 
-  ```bash
-  # example one-off
-  npx playwright show-trace # optional
-  # or in Playwright test:
-  // await context.storageState({ path: 'state.json' });
-  ```
+Artifacts uploaded: - playwright-report - allure-report
 
-  2. Configure Playwright to use that storage state:
+------------------------------------------------------------------------
 
-  ```ts
-  // example in test file or playwright.config.ts
-  test.use({ storageState: 'state.json' });
-  ```
+## Report Refresh Logic
 
-- **Flaky / timing issues:**  
-  Increase `waitForSelector` timeouts, make selectors more specific (`data-test-id`), and avoid fixed `waitForTimeout` sleeps.
+-   master = actual branch report
+-   latest = always points to newest master run
 
-- **Debugging visually:**  
-  Use `--headed` and `--debug` or set `PWDEBUG=1` to pause on failures.
+This ensures: - Stable permalink - CI-friendly dashboards - Historical
+tracking
 
----
+------------------------------------------------------------------------
 
 ## Troubleshooting
 
-- **"No tests found"**: Ensure you run from the repo root and `playwright.config.ts` exists and is configured for TypeScript tests.  
-- **TypeScript errors**: Run `npx tsc --noEmit` to check for issues.  
+  Problem              Solution
+  -------------------- --------------------------------------------
+  No tests found       Check playwright.config.ts
+  TypeScript errors    Run `npx tsc --noEmit`
+  CORS error locally   Serve using `npx serve` instead of file://
 
----
+------------------------------------------------------------------------
 
-## CI / GitHub Actions
+## Local Viewing of Allure
 
-Workflow: `.github/workflows/ci-playwright.yml`
+Never open directly via file://
 
-**What it does:**
+Use:
 
-- Runs on pushes and PRs to `main`/`master`, supports manual runs (`workflow_dispatch`), and daily scheduled runs at 06:00 UTC.  
-- Installs Node.js, dependencies, and Playwright browsers, then runs tests headless.  
-- Uploads artifacts:
-  - `playwright-report` (HTML report)
-  - `test-results/results.json` (JSON results)
+``` bash
+npx allure serve allure-results
+```
 
-**How to use:**
+or
 
-1. Commit and push to GitHub.  
-2. Open the **Actions** tab, select "Playwright Tests CI".  
-3. After a run, download artifacts for inspection.
+``` bash
+npx serve allure-report
+```
 
-**Scheduling:**  
-Adjust the cron expression in the workflow file to modify automatic run times.
+------------------------------------------------------------------------
 
----
+## Best Practices
+
+-   Prefer data-testid selectors
+-   Avoid hard sleeps
+-   Use explicit waits
+-   Keep tests deterministic
+
+------------------------------------------------------------------------
 
 ## License
 
-MIT / Open Source
+MIT License\
+
