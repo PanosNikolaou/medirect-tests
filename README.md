@@ -18,9 +18,13 @@ CI/CD automation.
 
 ------------------------------------------------------------------------
 
-## Live Reports
+## Live Reporting
 
 Reports are automatically published on every CI run.
+
+- Live dashboard (root index): https://panosnikolaou.github.io/medirect-tests/
+- Playwright HTML Report (index): https://panosnikolaou.github.io/medirect-tests/playwright-reports/latest/index.html
+- Allure Report (index): https://panosnikolaou.github.io/medirect-tests/allure-reports/latest/index.html
 
 ### Allure Reports
 

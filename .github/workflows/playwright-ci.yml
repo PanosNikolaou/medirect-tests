@@ -1,8 +1,20 @@
+# Playwright CI & Reports Build
+# This workflow runs Playwright tests, generates Playwright and Allure reports,
+# preserves Allure history between runs (if available), and uploads the generated
+# reports as workflow artifacts so they can be consumed by the GH Pages deployment
+# job (or downloaded from the UI).
+
 name: Playwright CI & Reports Build
 
+# Permissions for the workflow. `contents: write` is required when creating or
+# updating repository content during the run (not strictly needed here but kept
+# explicit). Adjust to least-privilege if you reduce scope later.
 permissions:
   contents: write
 
+# Triggers for the workflow. This workflow runs on pushes and PRs against
+# `master`, can be triggered manually via the Actions UI, and is scheduled
+# daily at 06:00 UTC (cron). Adjust branches and schedule as needed.
 on:
   push:
     branches: [ master ]
@@ -13,58 +25,92 @@ on:
     - cron: '0 6 * * *'
 
 jobs:
+  # Single job that runs the tests, generates reports and uploads artifacts
   report-build:
     name: Run Playwright Tests & Generate Reports
     runs-on: ubuntu-latest
+
+    # Set CI env variable and any other global envs needed by your scripts
     env:
       CI: true
+
     steps:
+      # 1) Checkout repository code so we can run tests and access scripts
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # 2) Setup Node.js runtime. The project uses Node 18 — change if needed.
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
           node-version: '18'
 
+      # 3) Cache npm modules between runs for faster installs
       - name: Cache node modules
         uses: actions/cache@v4
         with:
           path: |
             ~/.npm
             node_modules
+          # Cache key based on package-lock.json changes (update if you use pnpm/yarn)
           key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
 
+      # 4) Install project dependencies using `npm ci` (clean install)
       - name: Install dependencies
         run: npm ci
 
+      # 5) Install Playwright browsers (this downloads the required browser binaries)
       - name: Install Playwright browsers
         run: npx playwright install --with-deps
 
+      # 6) Capture storage state (custom script in `scripts/capture-storage-state.ts`)
+      #    - This step saves auth/session state if your tests rely on a logged-in session
       - name: Capture storage state
         run: npm run capture:state
 
+      # 7) Run Playwright tests using the CI script. The `STORAGE_STATE` env is
+      #    provided to the test run so tests can reuse the captured state.
       - name: Run Playwright tests
         env:
           STORAGE_STATE: state.json
         run: npm run ci
 
+      # 8) Preserve Allure history
+      #    - Creates `allure-results/history` locally and copies the previous
+      #      `allure-reports/latest/history/*` into it when available.
+      #    - Guarded to avoid failing when no previous history exists. This helps
+      #      Allure keep history-based charts (trend, durations, etc.) between runs.
       - name: Preserve Allure history
         run: |
           mkdir -p allure-results/history
-          cp -r allure-reports/latest/history/* allure-results/history/ || true
+          if [ -d "allure-reports/latest/history" ] && [ "$(ls -A allure-reports/latest/history 2>/dev/null)" ]; then
+            cp -r allure-reports/latest/history/* allure-results/history/
+          else
+            echo "No previous Allure history to copy"
+          fi
 
+      # 9) Write Allure environment information (custom script)
+      #    - `scripts/writeAllureEnvironment.js` should write environment-level
+      #      metadata to the allure results directory (platform, browser versions, etc.).
       - name: Write Allure environment
         run: node scripts/writeAllureEnvironment.js
 
+      # 10) Inject build metadata into Allure environment.properties so the generated
+      #     report contains build/run identifiers and timestamps.
       - name: Inject build metadata into Allure
         run: |
           echo "Build Time=$(date -u)" >> allure-results/environment.properties
           echo "GitHub Run ID=$GITHUB_RUN_ID" >> allure-results/environment.properties
 
+      # 11) Generate Allure report from the results
+      #     - `--clean` ensures the output directory is regenerated from results
       - name: Generate Allure report
         run: npx allure generate allure-results -o allure-report --clean
 
+      # 12) Upload Playwright HTML report as an artifact so downstream jobs
+      #     (for example a GH Pages deploy job) can download or the artifact
+      #     can be inspected via the Actions UI. `if-no-files-found: warn` prevents
+      #     the upload step from failing if the directory is missing.
       - name: Upload Playwright HTML report
         uses: actions/upload-artifact@v4
         with:
@@ -72,6 +118,7 @@ jobs:
           path: playwright-report
           if-no-files-found: warn
 
+      # 13) Upload Allure report artifact
       - name: Upload Allure report
         uses: actions/upload-artifact@v4
         with:

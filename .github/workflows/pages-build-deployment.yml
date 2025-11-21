@@ -1,10 +1,32 @@
+# Pages Build & Deployment
+#
+# This workflow runs after a successful Playwright CI run and publishes the
+# generated Playwright and Allure HTML reports to the `gh-pages` branch so they
+# are served by GitHub Pages. It is intentionally separate from the CI job so
+# that report deployment can be managed and authenticated independently.
+#
+# Notes:
+# - Uses a Personal Access Token (PAT_TOKEN) in several steps to allow pushing to
+#   the `gh-pages` branch and to access artifacts across workflow runs.
+# - Downloads artifacts from the most recent successful Playwright CI run and
+#   assembles a `site/` directory with per-branch report copies and a `latest`
+#   alias for `master`.
+# - Publishes using `peaceiris/actions-gh-pages@v3` which commits files to the
+#   `gh-pages` branch (keeps existing files by default via `keep_files: true`).
+
 name: Pages Build & Deployment
 
+# Minimal permissions required by the workflow. `pages: write` is required
+# for the pages publishing action; `id-token: write` can be used for OIDC but
+# not strictly necessary here. Keep scope tight in production environments.
 permissions:
   contents: write
   pages: write
   id-token: write
 
+# Trigger this workflow when a run of the Playwright CI & Reports Build
+# workflow completes. We only care about completed runs because we will
+# download artifacts from successful runs.
 on:
   workflow_run:
     workflows: ["Playwright CI & Reports Build"]
@@ -15,10 +37,23 @@ jobs:
   deploy-pages:
     name: Deploy Reports to GH Pages
     runs-on: ubuntu-latest
+
+    # This job performs several steps:
+    # 1. Checkout repo and existing gh-pages branch to read current history
+    # 2. Find latest successful Playwright CI workflow run and its branch
+    # 3. Download report artifacts from that run
+    # 4. Assemble a site directory containing per-branch reports and `latest`
+    # 5. Generate an index page and publish the `site/` directory to gh-pages
     steps:
+      # Step: Check out repository contents. This provides source files such as
+      # `scripts/generate-index-html.sh` and allows creating site content.
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      # Step: Check out the current `gh-pages` branch into a subfolder so we
+      # can read the existing site (history for Allure, previous latest, etc.).
+      # We use a PAT so the action has permission to fetch this branch even if
+      # the default GITHUB_TOKEN has limited scopes in your org.
       - name: Checkout existing gh-pages branch
         uses: actions/checkout@v4
         with:
@@ -26,6 +61,12 @@ jobs:
           token: ${{ secrets.PAT_TOKEN }}
           path: gh-pages
 
+      # Step: Determine the latest successful Playwright CI workflow run.
+      # - Uses `actions/github-script` to call the REST API and retrieve the
+      #   most recent successful run for the Playwright workflow file.
+      # - We explicitly use the workflow file name (`playwright-ci.yml`) here
+      #   instead of the display name to avoid ambiguity.
+      # - Outputs `run_id` and `branch` for downstream steps.
       - name: Get latest successful workflow run
         id: get_latest_run
         uses: actions/github-script@v7
@@ -48,6 +89,10 @@ jobs:
               core.setOutput("branch", runs.data.workflow_runs[0].head_branch);
             }
 
+      # Step: Download the Allure artifact that was uploaded by the Playwright
+      # CI workflow. We provide `run-id` to fetch the artifact from the specific
+      # workflow run discovered above. `path` controls where the artifact is
+      # extracted inside the runner workspace.
       - name: Download Allure report artifact
         uses: actions/download-artifact@v4
         with:
@@ -56,6 +101,7 @@ jobs:
           run-id: ${{ steps.get_latest_run.outputs.run_id }}
           github-token: ${{ secrets.PAT_TOKEN }}
 
+      # Step: Download the Playwright HTML report artifact from the same run.
       - name: Download Playwright report artifact
         uses: actions/download-artifact@v4
         with:
@@ -64,6 +110,17 @@ jobs:
           run-id: ${{ steps.get_latest_run.outputs.run_id }}
           github-token: ${{ secrets.PAT_TOKEN }}
 
+      # Step: Assemble the `site/` directory structure used for publishing.
+      # - Creates per-branch folders under `allure-reports/` and
+      #   `playwright-reports/` using the branch name from the CI run.
+      # - Copies the extracted artifact contents into the per-branch folders.
+      # - Preserves Allure `history/` (if present) from the existing `gh-pages`
+      #   branch so that Allure can show trends across runs. The history is
+      #   copied into the branch-specific folder so the next report generation
+      #   can include trend charts.
+      # - If the CI run branch is `master`, a `latest` alias is created by
+      #   copying the `master` folder to `latest`. This makes it easy to link
+      #   to the most recent release/CI output.
       - name: Assemble site directory
         run: |
           set -e
@@ -72,16 +129,21 @@ jobs:
           mkdir -p $SITE_DIR/allure-reports/$REF_NAME
           mkdir -p $SITE_DIR/playwright-reports/$REF_NAME
 
+          # Copy downloaded artifact contents (if any) into the site tree.
           cp -r allure-report/* $SITE_DIR/allure-reports/$REF_NAME/ || true
           cp -r playwright-report/* $SITE_DIR/playwright-reports/$REF_NAME/ || true
 
-          # Preserve Allure history
+          # Preserve Allure history from the currently published site (if it exists).
+          # This ensures that generated Allure HTML pages still display trends.
           if [[ -d gh-pages/allure-reports/latest/history ]]; then
             mkdir -p $SITE_DIR/allure-reports/$REF_NAME/history
             cp -r gh-pages/allure-reports/latest/history/* $SITE_DIR/allure-reports/$REF_NAME/history/ || true
           fi
 
-          # Update 'latest' for master
+          # If the run belongs to the `master` branch, update `latest` symlink
+          # (implemented as a directory copy here) so root pages link to the
+          # newest master reports. We remove any existing `latest` before copying
+          # to avoid stale files.
           if [[ "$REF_NAME" == "master" ]]; then
             rm -rf $SITE_DIR/allure-reports/latest || true
             rm -rf $SITE_DIR/playwright-reports/latest || true
@@ -89,12 +151,19 @@ jobs:
             cp -r $SITE_DIR/playwright-reports/master $SITE_DIR/playwright-reports/latest || true
           fi
 
+      # Step: Generate a simple index.html for the published site. This script
+      # uses the `site/` tree we assembled above and produces index pages for
+      # easy navigation between branch builds and `latest`.
       - name: Generate index.html
         run: |
           chmod +x scripts/generate-index-html.sh
           cd site
           ../scripts/generate-index-html.sh
 
+      # Step: Publish the assembled `site/` directory to the `gh-pages` branch.
+      # - `peaceiris/actions-gh-pages@v3` commits the files to the branch and
+      #   can be configured to preserve existing files (`keep_files: true`).
+      # - We pass the PAT token so the action has permission to push changes.
       - name: Publish site to gh-pages
         uses: peaceiris/actions-gh-pages@v3
         with:
@@ -105,6 +174,9 @@ jobs:
           user_name: github-actions[bot]
           user_email: github-actions[bot]@users.noreply.github.com
 
+      # Step: Optionally comment on the PR that triggered the CI run with links
+      # to the run and the published reports. This step checks if the workflow_run
+      # contained a pull request reference before posting the comment.
       - name: Comment on PR with workflow run link and reports
         if: ${{ github.event.workflow_run.pull_requests[0] }}
         uses: peter-evans/create-or-update-comment@v4
