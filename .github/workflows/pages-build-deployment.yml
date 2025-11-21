@@ -32,6 +32,7 @@ jobs:
           name: allure-report
           path: allure-report
           run-id: ${{ github.event.workflow_run.id }}
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Download Playwright report artifact
         uses: actions/download-artifact@v4
@@ -39,6 +40,7 @@ jobs:
           name: playwright-html-report
           path: playwright-report
           run-id: ${{ github.event.workflow_run.id }}
+          token: ${{ secrets.PAT_TOKEN }}
 
       - name: Assemble site directory
         run: |
