@@ -104,3 +104,20 @@ Troubleshooting
 ---------------
 - "No tests found": ensure you run from the repo root and that `playwright.config.ts` is present and configured for your test files (this repo uses a TypeScript Playwright config).
 - If TypeScript errors appear, run `npx tsc --noEmit` to view them.
+
+CI / GitHub Actions
+-------------------
+A GitHub Actions workflow is included at `.github/workflows/ci-playwright.yml`.
+
+What it does:
+- Runs on pushes and pull requests to `main`/`master`, supports manual run (workflow_dispatch), and is scheduled to run daily at 06:00 UTC.
+- Installs Node.js, dependencies, Playwright browsers, and runs the test suite headless.
+- Uploads the generated HTML report directory (`playwright-report`) and the JSON results file (`test-results/results.json`) as workflow artifacts so you can download and inspect them from the GitHub Actions UI.
+
+How to use:
+1. Commit and push the repository to GitHub.
+2. Open the Actions tab in the repo on GitHub and select "Playwright Tests CI" to view runs.
+3. After a run completes, expand the run and download the artifacts named `playwright-report` and `playwright-results-json` to inspect the HTML and JSON outputs.
+
+Scheduling:
+- The workflow is scheduled to run daily using the cron expression in the workflow file. You can change the schedule if required.
