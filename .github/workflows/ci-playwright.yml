@@ -140,16 +140,17 @@ jobs:
           cd site
           ../scripts/generate-index-html.sh
 
-      - name: Configure Pages
-        uses: actions/configure-pages@v3
-
-      - name: Upload site artifact for Pages
-        uses: actions/upload-pages-artifact@v1
+      - name: Publish site to gh-pages (peaceiris)
+        uses: peaceiris/actions-gh-pages@v3
         with:
-          path: site
-
-      - name: Deploy to GitHub Pages
-        uses: actions/deploy-pages@v1
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: site
+          publish_branch: gh-pages
+          # keep gh-pages history and overwrite files
+          keep_files: true
+          # optional: configure committer
+          user_name: github-actions[bot]
+          user_email: github-actions[bot]@users.noreply.github.com
 
       - name: Comment on PR with workflow run link and reports
         if: ${{ github.event_name == 'pull_request' }}
