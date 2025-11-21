@@ -1,5 +1,10 @@
 name: Playwright CI & Pages Deployment
 
+permissions:
+  contents: write
+  pages: write
+  id-token: write
+
 on:
   push:
     branches: [ master ]
@@ -85,14 +90,12 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Git
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
-
-      - name: Clone gh-pages branch
-        run: |
-          git clone --branch gh-pages https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
+      - name: Checkout existing gh-pages branch (to preserve history)
+        uses: actions/checkout@v4
+        with:
+          ref: gh-pages
+          token: ${{ secrets.GH_PAGES_TOKEN }}
+          path: gh-pages
 
       - name: Download Allure report artifact
         uses: actions/download-artifact@v4
@@ -106,49 +109,47 @@ jobs:
           name: playwright-html-report
           path: playwright-report
 
-      - name: Copy reports into gh-pages
+      - name: Assemble site directory
         run: |
+          set -e
           REF_NAME=${GITHUB_REF_NAME##*/}
-          mkdir -p gh-pages/allure-reports/$REF_NAME
-          mkdir -p gh-pages/playwright-reports/$REF_NAME
+          SITE_DIR=site
+          mkdir -p $SITE_DIR/allure-reports/$REF_NAME
+          mkdir -p $SITE_DIR/playwright-reports/$REF_NAME
 
-          cp -r allure-report/* gh-pages/allure-reports/$REF_NAME/
-          cp -r playwright-report/* gh-pages/playwright-reports/$REF_NAME/
+          cp -r allure-report/* $SITE_DIR/allure-reports/$REF_NAME/ || true
+          cp -r playwright-report/* $SITE_DIR/playwright-reports/$REF_NAME/ || true
 
-      - name: Update 'latest' for master branch
-        run: |
-          REF_NAME=${GITHUB_REF_NAME##*/}
-          if [[ "$REF_NAME" == "master" ]]; then
-            rm -rf gh-pages/allure-reports/latest
-            rm -rf gh-pages/playwright-reports/latest
-            cp -r gh-pages/allure-reports/master gh-pages/allure-reports/latest
-            cp -r gh-pages/playwright-reports/master gh-pages/playwright-reports/latest
-          fi
-
-      - name: Preserve Allure history
-        run: |
-          REF_NAME=${GITHUB_REF_NAME##*/}
-          mkdir -p gh-pages/allure-reports/$REF_NAME/history
+          # Preserve Allure history from existing gh-pages if available
           if [[ -d gh-pages/allure-reports/latest/history ]]; then
-            cp -r gh-pages/allure-reports/latest/history/* gh-pages/allure-reports/$REF_NAME/history/ || true
+            mkdir -p $SITE_DIR/allure-reports/$REF_NAME/history
+            cp -r gh-pages/allure-reports/latest/history/* $SITE_DIR/allure-reports/$REF_NAME/history/ || true
           fi
 
-      - name: Generate index.html
+          # Update 'latest' for master branch within the site directory
+          if [[ "$REF_NAME" == "master" ]]; then
+            rm -rf $SITE_DIR/allure-reports/latest || true
+            rm -rf $SITE_DIR/playwright-reports/latest || true
+            cp -r $SITE_DIR/allure-reports/master $SITE_DIR/allure-reports/latest || true
+            cp -r $SITE_DIR/playwright-reports/master $SITE_DIR/playwright-reports/latest || true
+          fi
+
+      - name: Generate index.html in site
         run: |
           chmod +x scripts/generate-index-html.sh
-          cd gh-pages
+          cd site
           ../scripts/generate-index-html.sh
 
-      - name: Force gh-pages update marker
-        run: |
-          echo "Last build: $(date)" > gh-pages/build-info.txt
+      - name: Configure Pages
+        uses: actions/configure-pages@v3
 
-      - name: Commit and push to gh-pages
-        run: |
-          cd gh-pages
-          git add -A
-          git commit --allow-empty -m "Update reports $(date +'%Y-%m-%d %H:%M:%S')"
-          git push origin gh-pages --force
+      - name: Upload site artifact for Pages
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: site
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v1
 
       - name: Comment on PR with workflow run link and reports
         if: ${{ github.event_name == 'pull_request' }}
