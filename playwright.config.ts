@@ -13,6 +13,8 @@ export default defineConfig({
   ],
   use: {
     headless: true,
+    // Allow tests to use a pre-captured storage state (set in CI via env STORAGE_STATE)
+    storageState: process.env.STORAGE_STATE || undefined,
     baseURL: 'http://localhost:3000',
     actionTimeout: 5000,
     trace: 'on-first-retry',
