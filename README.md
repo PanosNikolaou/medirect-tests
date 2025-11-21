@@ -26,6 +26,21 @@ Reports are automatically published on every CI run.
 - Playwright HTML Report (index): https://panosnikolaou.github.io/medirect-tests/playwright-reports/latest/index.html
 - Allure Report (index): https://panosnikolaou.github.io/medirect-tests/allure-reports/latest/index.html
 
+<!-- Report preview images: stored in /resources -->
+
+#### Report previews
+
+<p>
+  <!-- Allure preview images (two examples) -->
+  <img src="resources/allure1.png" alt="Allure report preview 1" width="420" style="margin-right:8px;">
+  <img src="resources/allure2.png" alt="Allure report preview 2" width="420">
+</p>
+
+<p>
+  <!-- Playwright HTML report preview -->
+  <img src="resources/playwright.png" alt="Playwright HTML report preview" width="860">
+</p>
+
 ### Allure Reports
 
 -   Latest (master):
