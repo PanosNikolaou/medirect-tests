@@ -15,6 +15,7 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CI: true
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -81,11 +82,11 @@ jobs:
           path: allure-report
           if-no-files-found: warn
 
-      # Publish Playwright HTML report to GitHub Pages
+      # Publish Playwright HTML report to GH Pages
       - name: Publish Playwright HTML report
         uses: peaceiris/actions-gh-pages@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GH_PAGES_TOKEN }}
           publish_dir: ./playwright-report
           publish_branch: gh-pages
           destination_dir: playwright-reports/${{ github.ref_name }}
@@ -93,11 +94,11 @@ jobs:
           user_email: 'github-actions[bot]@users.noreply.github.com'
           keep_files: true
 
-      # Publish Allure report to GitHub Pages
+      # Publish Allure report to GH Pages
       - name: Publish Allure report
         uses: peaceiris/actions-gh-pages@v4
         with:
-          github_token: ${{ secrets.GITHUB_TOKEN }}
+          github_token: ${{ secrets.GH_PAGES_TOKEN }}
           publish_dir: ./allure-report
           publish_branch: gh-pages
           destination_dir: allure-reports/${{ github.ref_name }}
@@ -110,10 +111,9 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages
+          git clone --branch gh-pages https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
           cd gh-pages
 
-          # Start HTML
           echo "<!DOCTYPE html>
           <html lang='en'>
           <head>
@@ -147,10 +147,9 @@ jobs:
               </thead>
               <tbody>" > index.html
 
-          # Get all branch names from either report folder
+          # Get all unique branch names from both report folders
           branches=$(ls -1 allure-reports playwright-reports | sort -u)
 
-          # Collect branch timestamps for sorting
           declare -A branch_times
           for branch in $branches; do
             allure_time=$(stat -c %Y allure-reports/$branch 2>/dev/null || echo 0)
@@ -159,7 +158,6 @@ jobs:
             branch_times[$branch]=$latest_time
           done
 
-          # Determine main branch and latest branch
           main_branch="main"
           latest_branch=$(for b in "${!branch_times[@]}"; do echo "$b ${branch_times[$b]}"; done | sort -k2 -nr | head -n 1 | awk '{print $1}')
 
@@ -171,10 +169,8 @@ jobs:
             [[ "$branch" == "$main_branch" ]] && row_class="main-branch" && badges="$badges <span class='badge badge-main'>MAIN</span>"
             [[ "$branch" == "$latest_branch" ]] && badges="$badges <span class='badge badge-latest'>LATEST</span>"
 
-            # Format last updated timestamp
             last_updated=$(date -d @"${branch_times[$branch]}" '+%Y-%m-%d %H:%M:%S')
 
-            # Check if reports exist
             allure_link="allure-reports/$branch"
             playwright_link="playwright-reports/$branch"
             [[ ! -d "$allure_link" ]] && allure_link="#"
@@ -188,7 +184,6 @@ jobs:
                   </tr>" >> index.html
           done
 
-          # Finish HTML
           echo "</tbody></table></body></html>" >> index.html
 
           git add index.html
@@ -201,7 +196,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git clone --branch gh-pages https://x-access-token:${{ secrets.GITHUB_TOKEN }}@github.com/${{ github.repository }} gh-pages
+          git clone --branch gh-pages https://x-access-token:${{ secrets.GH_PAGES_TOKEN }}@github.com/${{ github.repository }} gh-pages
           cd gh-pages
           rm -rf allure-reports/latest playwright-reports/latest
           cp -r allure-reports/main allure-reports/latest
