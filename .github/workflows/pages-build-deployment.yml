@@ -6,7 +6,10 @@ permissions:
   id-token: write
 
 on:
-  workflow_dispatch:
+  workflow_run:
+    workflows: ["Playwright CI & Reports Build"]
+    types:
+      - completed
 
 jobs:
   deploy-pages:
@@ -71,13 +74,11 @@ jobs:
           cp -r allure-report/* $SITE_DIR/allure-reports/$REF_NAME/ || true
           cp -r playwright-report/* $SITE_DIR/playwright-reports/$REF_NAME/ || true
 
-          # Preserve Allure history
           if [[ -d gh-pages/allure-reports/latest/history ]]; then
             mkdir -p $SITE_DIR/allure-reports/$REF_NAME/history
             cp -r gh-pages/allure-reports/latest/history/* $SITE_DIR/allure-reports/$REF_NAME/history/ || true
           fi
 
-          # Update 'latest' for master
           if [[ "$REF_NAME" == "master" ]]; then
             rm -rf $SITE_DIR/allure-reports/latest || true
             rm -rf $SITE_DIR/playwright-reports/latest || true
@@ -102,11 +103,11 @@ jobs:
           user_email: github-actions[bot]@users.noreply.github.com
 
       - name: Comment on PR with workflow run link and reports
-        if: ${{ github.event.pull_request }}
+        if: ${{ github.event.workflow_run.pull_requests[0] }}
         uses: peter-evans/create-or-update-comment@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          issue-number: ${{ github.event.pull_request.number }}
+          issue-number: ${{ github.event.workflow_run.pull_requests[0].number }}
           body: |
             ✅ Playwright test run completed
 
