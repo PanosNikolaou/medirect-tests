@@ -9,14 +9,8 @@ function getCliOrEnvEquityName(): string | null {
   const argv = process.argv.slice(2);
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
-    if (a.startsWith('--equity=')) {
-      const v = a.split('=')[1];
-      if (v?.trim()) return v.trim();
-    }
-    if (a === '--equity' && i + 1 < argv.length) {
-      const v = argv[i + 1];
-      if (v && !v.startsWith('-')) return v.trim();
-    }
+    if (a.startsWith('--equity=')) return a.split('=')[1].trim();
+    if (a === '--equity' && i + 1 < argv.length && !argv[i + 1].startsWith('-')) return argv[i + 1].trim();
   }
   return null;
 }
@@ -64,12 +58,12 @@ test.describe('Medirect Equities Search Tests', () => {
     await searchPage.searchEquity(nonExistent);
 
     // Wait for either "no results" or any results (avoid timeout errors)
-    const noResultsLocator = searchPage.noResultsLocator(); // ensure this returns locator('.no-results')
-    const resultsLocator = searchPage.resultsLocator();     // ensure this returns locator('.search-result-item')
+    const noResultsLocator = searchPage.noResultsLocator;
+    const resultsLocator = searchPage.resultsLocator;
 
     await Promise.race([
-      noResultsLocator.waitFor({ state: 'visible', timeout: 5000 }).catch(() => null),
-      resultsLocator.first().waitFor({ state: 'visible', timeout: 5000 }).catch(() => null),
+      noResultsLocator.waitFor({ state: 'visible' }),
+      resultsLocator.first().waitFor({ state: 'visible' }),
     ]);
 
     const noResults = await searchPage.isNoResultsVisible();
